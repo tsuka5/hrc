@@ -37,6 +37,13 @@ export default function Home() {
   );
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 左右ペインの境界（スプリッター）をドラッグして幅を変更する
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [leftWidth, setLeftWidth] = useState(440);
+  const [dragging, setDragging] = useState(false);
+  // lg 以上（横並び）のときだけ幅指定とスプリッターを有効にする
+  const [isWide, setIsWide] = useState(true);
+
   // 2 秒だけメッセージを表示して自動で消す
   const showToast = (message: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -50,6 +57,39 @@ export default function Home() {
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
+
+  // 画面幅（lg ブレークポイント）を監視
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // ドラッグ中はポインタ移動で左ペイン幅を更新（最小・最大でクランプ）
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const rect = rowRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const min = 320;
+      const max = rect.width - 360; // プレビュー側に最低限の幅を残す
+      const next = e.clientX - rect.left;
+      setLeftWidth(Math.max(min, Math.min(next, max)));
+    };
+    const onUp = () => setDragging(false);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging]);
 
   // 単一フィールドの更新
   const handleChange = <K extends keyof WorkRulesData>(
@@ -94,10 +134,14 @@ export default function Home() {
 
       {/* 2ペインレイアウト
           - 狭い画面：縦積みでページ全体がスクロール
-          - lg 以上：左フォーム固定幅・右プレビューがそれぞれ独立スクロール */}
-      <div className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
+          - lg 以上：左フォーム（幅可変）・右プレビューがそれぞれ独立スクロール。
+            中央のスプリッターをドラッグして境界を移動できる。 */}
+      <div ref={rowRef} className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
         {/* 左：入力フォーム */}
-        <div className="border-slate-200 p-5 lg:w-[440px] lg:flex-none lg:overflow-y-auto lg:border-r">
+        <div
+          className="border-slate-200 p-5 lg:flex-none lg:overflow-y-auto lg:border-r"
+          style={isWide ? { width: leftWidth } : undefined}
+        >
           <RuleForm
             data={data}
             onChange={handleChange}
@@ -105,6 +149,24 @@ export default function Home() {
             onApplyIndustry={handleApplyIndustry}
             selectedIndustry={selectedIndustry}
           />
+        </div>
+
+        {/* スプリッター（lg 以上でのみ表示。ドラッグで左右の境界を移動） */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="入力欄とプレビューの境界をドラッグして幅を変更"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDoubleClick={() => setLeftWidth(440)}
+          title="ドラッグで幅を変更（ダブルクリックで既定値に戻す）"
+          className={`hidden w-1.5 shrink-0 cursor-col-resize touch-none items-center justify-center transition-colors lg:flex ${
+            dragging ? "bg-indigo-400" : "bg-slate-200 hover:bg-indigo-300"
+          }`}
+        >
+          <span className="h-8 w-0.5 rounded-full bg-slate-400/70" />
         </div>
 
         {/* 右：プレビュー */}
